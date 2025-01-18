@@ -4,6 +4,7 @@ namespace EasyCorp\Bundle\EasyAdminBundle\Provider;
 
 use Doctrine\DBAL\Types\Types;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use EasyCorp\Bundle\EasyAdminBundle\Contracts\Provider\AdminContextProviderInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
 
 /**
@@ -11,11 +12,9 @@ use EasyCorp\Bundle\EasyAdminBundle\Field\Field;
  */
 final class FieldProvider
 {
-    private AdminContextProvider $adminContextProvider;
-
-    public function __construct(AdminContextProvider $adminContextProvider)
-    {
-        $this->adminContextProvider = $adminContextProvider;
+    public function __construct(
+        private readonly AdminContextProviderInterface $adminContextProvider,
+    ) {
     }
 
     public function getDefaultFields(string $pageName): array
@@ -24,11 +23,12 @@ final class FieldProvider
         $maxNumProperties = Crud::PAGE_INDEX === $pageName ? 7 : \PHP_INT_MAX;
         $entityDto = $this->adminContextProvider->getContext()->getEntity();
 
+        // don't use Types::OBJECT because it was removed in Doctrine ORM 3.0
         $excludedPropertyTypes = [
-            Crud::PAGE_EDIT => [Types::BINARY, Types::BLOB, Types::JSON, Types::OBJECT],
-            Crud::PAGE_INDEX => [Types::BINARY, Types::BLOB, Types::GUID, Types::JSON, Types::OBJECT, Types::TEXT],
-            Crud::PAGE_NEW => [Types::BINARY, Types::BLOB, Types::JSON, Types::OBJECT],
-            Crud::PAGE_DETAIL => [Types::BINARY, Types::JSON, Types::OBJECT],
+            Crud::PAGE_EDIT => [Types::BINARY, Types::BLOB, Types::JSON, 'object'],
+            Crud::PAGE_INDEX => [Types::BINARY, Types::BLOB, Types::GUID, Types::JSON, 'object', Types::TEXT],
+            Crud::PAGE_NEW => [Types::BINARY, Types::BLOB, Types::JSON, 'object'],
+            Crud::PAGE_DETAIL => [Types::BINARY, Types::JSON, 'object'],
         ];
 
         $excludedPropertyNames = [

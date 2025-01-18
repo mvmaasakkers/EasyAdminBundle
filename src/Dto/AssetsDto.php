@@ -3,6 +3,7 @@
 namespace EasyCorp\Bundle\EasyAdminBundle\Dto;
 
 use EasyCorp\Bundle\EasyAdminBundle\Asset\AssetPackage;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Option\IconSet;
 
 /**
  * @author Javier Eguiluz <javier.eguiluz@gmail.com>
@@ -12,6 +13,8 @@ final class AssetsDto
     /** @var AssetDto[] */
     private array $webpackEncoreAssets = [];
     /** @var AssetDto[] */
+    private array $assetMapperAssets = [];
+    /** @var AssetDto[] */
     private array $cssAssets = [];
     /** @var AssetDto[] */
     private array $jsAssets = [];
@@ -19,6 +22,8 @@ final class AssetsDto
     private array $headContents = [];
     /** @var AssetDto[] */
     private array $bodyContents = [];
+    private string $iconSet = IconSet::FontAwesome;
+    private string $defaultIconPrefix = '';
 
     public function __construct()
     {
@@ -31,6 +36,15 @@ final class AssetsDto
         }
 
         $this->webpackEncoreAssets[$entryName] = $assetDto;
+    }
+
+    public function addAssetMapperAsset(AssetDto $assetDto): void
+    {
+        if (\array_key_exists($entrypointName = $assetDto->getValue(), $this->assetMapperAssets)) {
+            throw new \InvalidArgumentException(sprintf('The "%s" AssetMapper entry has been added more than once via the addAssetMapperAsset() method, but each entry can only be added once (to not overwrite its configuration).', $entrypointName));
+        }
+
+        $this->assetMapperAssets[$entrypointName] = $assetDto;
     }
 
     public function addCssAsset(AssetDto $assetDto): void
@@ -69,6 +83,16 @@ final class AssetsDto
         $this->bodyContents[] = $htmlContent;
     }
 
+    public function setIconSet(string $iconSet): void
+    {
+        $this->iconSet = $iconSet;
+    }
+
+    public function setDefaultIconPrefix(string $defaultIconPrefix): void
+    {
+        $this->defaultIconPrefix = $defaultIconPrefix;
+    }
+
     public function getDefaultAssetPackageName(): string
     {
         return AssetPackage::PACKAGE_NAME;
@@ -80,6 +104,14 @@ final class AssetsDto
     public function getWebpackEncoreAssets(): array
     {
         return $this->webpackEncoreAssets;
+    }
+
+    /**
+     * @return AssetDto[]
+     */
+    public function getAssetMapperAssets(): array
+    {
+        return $this->assetMapperAssets;
     }
 
     /**
@@ -108,6 +140,16 @@ final class AssetsDto
         return $this->bodyContents;
     }
 
+    public function getIconSet(): string
+    {
+        return $this->iconSet;
+    }
+
+    public function getDefaultIconPrefix(): string
+    {
+        return $this->defaultIconPrefix;
+    }
+
     public function loadedOn(?string $pageName): self
     {
         if (null === $pageName) {
@@ -115,6 +157,8 @@ final class AssetsDto
         }
 
         $filteredAssets = new self();
+        $filteredAssets->iconSet = $this->iconSet;
+        $filteredAssets->defaultIconPrefix = $this->defaultIconPrefix;
 
         foreach ($this->cssAssets as $cssAsset) {
             if ($cssAsset->getLoadedOn()->has($pageName)) {
@@ -124,6 +168,11 @@ final class AssetsDto
         foreach ($this->jsAssets as $jsAsset) {
             if ($jsAsset->getLoadedOn()->has($pageName)) {
                 $filteredAssets->addJsAsset($jsAsset);
+            }
+        }
+        foreach ($this->assetMapperAssets as $assetMapperAsset) {
+            if ($assetMapperAsset->getLoadedOn()->has($pageName)) {
+                $filteredAssets->addAssetMapperAsset($assetMapperAsset);
             }
         }
         foreach ($this->webpackEncoreAssets as $webpackEncoreAsset) {
@@ -143,6 +192,7 @@ final class AssetsDto
 
     public function mergeWith(self $assetsDto): self
     {
+        $this->assetMapperAssets = array_merge($this->assetMapperAssets, $assetsDto->getAssetMapperAssets());
         $this->webpackEncoreAssets = array_merge($this->webpackEncoreAssets, $assetsDto->getWebpackEncoreAssets());
         $this->cssAssets = array_merge($this->cssAssets, $assetsDto->getCssAssets());
         $this->jsAssets = array_merge($this->jsAssets, $assetsDto->getJsAssets());

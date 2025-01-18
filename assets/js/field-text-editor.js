@@ -1,9 +1,14 @@
 require('../css/form-type-text-editor.css');
 
 import DirtyForm from "dirty-form";
-import Trix from 'trix/dist/trix';
+import Trix from 'trix/dist/trix.esm';
 
-document.addEventListener('DOMContentLoaded', () => {
+// Provide Trix variable globally to allow custom backend pages to use it
+window.Trix = Trix;
+
+// Listening to the DOMLoadedContent event is too late because the Trix editor is already initialized.
+// To be sure to handle properly the custom configuration, we have to to listen to the trix-before-initialize event.
+document.addEventListener('trix-before-initialize', () => {
     new TextEditorField();
 });
 
@@ -35,7 +40,7 @@ class TextEditorField {
 
                 if (editor !== null) {
                     // Here we consider 21px as the average line height
-                    editor.style.setProperty('min-height', `${21 * trixContentElement.dataset.numberOfRows}px`);
+                    editor.style.setProperty('min-block-size', `${21 * trixContentElement.dataset.numberOfRows}px`);
                 }
             }
         });

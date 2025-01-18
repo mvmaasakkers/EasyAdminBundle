@@ -48,10 +48,94 @@ explained in the next section.
 Dashboard Route
 ---------------
 
-Each dashboard uses a single Symfony route to serve all its URLs. The needed
-information is passed using query string parameters. If you generated the
-dashboard with the ``make:admin:dashboard`` command, the route is defined using
-`Symfony route annotations`_ or PHP attributes (if the project requires PHP 8 or newer).
+.. _pretty-admin-urls:
+
+Pretty Admin URLs
+-----------------
+
+.. versionadded:: 4.14.0
+
+    The support for pretty admin URLs was introduced in EasyAdmin 4.14.0.
+
+EasyAdmin backends define concise and predictable route names (e.g. ``admin_product_index``
+or ``admin_category_detail``) that generate short and pretty URLs (e.g. ``/admin/product``
+or ``/admin/category/324``).
+
+This is possible thanks to a `custom Symfony route loader`_ that you must enable
+first in your application. To do so, create this file:
+
+.. code-block:: yaml
+
+    # config/routes/easyadmin.yaml
+    easyadmin:
+        resource: .
+        type: easyadmin.routes
+
+.. note::
+
+    The ``easyadmin.routes`` string is also available as the PHP constant
+    ``\EasyCorp\Bundle\EasyAdminBundle\Router\AdminRouteLoader::ROUTE_LOADER_TYPE``.
+
+Now, define the main route of your dashboard class using a PHP attribute in the
+``index()`` method of that controller (if you don't have a Dashboard yet, you can
+quickly generate one running the command ``make:admin:dashboard``)::
+
+    // src/Controller/Admin/DashboardController.php
+    namespace App\Controller\Admin;
+
+    use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
+    use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
+    use Symfony\Component\HttpFoundation\Response;
+    use Symfony\Component\Routing\Attribute\Route;
+
+    class DashboardController extends AbstractDashboardController
+    {
+        #[Route('/admin', name: 'admin')]
+        public function index(): Response
+        {
+            return parent::index();
+        }
+
+        // ...
+    }
+
+.. caution::
+
+    The dashboard route must be defined using the ``#[Route]`` attribute. None
+    of the other ways supported by Symfony to configure a route will work.
+
+.. tip::
+
+    If you are implementing a multilingual dashboard, add the ``_locale`` parameter
+    to the route (e.g. ``/admin/{_locale}``).
+
+The ``index()`` method is called by EasyAdmin to render your dashboard. Since
+``index()`` is part of the Dashboard interface, you cannot add arguments to it
+to inject dependencies. Instead, inject those dependencies in the constructor
+method of the controller.
+
+The name of the ``index()`` route will be used as the prefix of all the routes
+associated to this dashboard (e.g. if this route name is ``my_private_backend``,
+the generated routes will be like ``my_private_backend_product_index``). The path
+of this route will also be used by all the dasboard routes (e.g. if the path is
+``/_secret/backend``, the generated routes paths will be like ``/_secret/backend/category/324``).
+
+That's it. Later, when you start adding :doc:`CRUD controllers </crud>`, the route
+loader will create all the needed routes for each of them.
+
+Legacy Admin URLs
+-----------------
+
+.. note::
+
+    If you are using :ref:`pretty admin URLs <pretty-admin-urls>` in your application,
+    you can skip this section entirely.
+
+Before the introduction of :ref:`pretty admin URLs <pretty-admin-urls>`, EasyAdmin
+used a single Symfony route to serve all dashboard URLs. The needed information
+is passed using query string parameters. If you generated the dashboard with the
+``make:admin:dashboard`` command, the route is defined using `Symfony route annotations`_
+or PHP attributes (if the project requires PHP 8 or newer).
 
 **The only requirement** is to define the route in a controller method named
 ``index()``, which is the one called by EasyAdmin to render the dashboard:
@@ -89,7 +173,7 @@ dashboard with the ``make:admin:dashboard`` command, the route is defined using
         use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
         use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
         use Symfony\Component\HttpFoundation\Response;
-        use Symfony\Component\Routing\Annotation\Route;
+        use Symfony\Component\Routing\Attribute\Route;
 
         class DashboardController extends AbstractDashboardController
         {
@@ -155,7 +239,7 @@ application, you can define an explicit route name to simplify your code:
         use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
         use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
         use Symfony\Component\HttpFoundation\Response;
-        use Symfony\Component\Routing\Annotation\Route;
+        use Symfony\Component\Routing\Attribute\Route;
 
         class DashboardController extends AbstractDashboardController
         {
@@ -219,8 +303,8 @@ parameters in your application because EasyAdmin provides a service to
 .. note::
 
     Using a single route to handle all backend URLs means that generated URLs
-    are a bit long and ugly. This is a reasonable trade-off because it makes
-    many other features, such as generating admin URLs, much simpler.
+    are a bit long and ugly. This is fine in many scenarios but if you prefer,
+    you can use instead :ref:`pretty admin URLs <pretty-admin-urls>`.
 
 Dashboard Configuration
 -----------------------
@@ -273,6 +357,15 @@ explained later)::
                 // mode for any reason (e.g. if your interface customizations are not ready for it)
                 ->disableDarkMode()
 
+                // by default, the UI color scheme is 'auto', which means that the backend
+                // will use the same mode (light/dark) as the operating system and will
+                // change in sync when the OS mode changes.
+                // Use this option to set which mode ('light', 'dark' or 'auto') will users see
+                // by default in the backend (users can change it via the color scheme selector)
+                ->setDefaultColorScheme('dark')
+                // instead of magic strings, you can use constants as the value of
+                // this option: EasyCorp\Bundle\EasyAdminBundle\Config\Option\ColorScheme::DARK
+
                 // by default, all backend URLs are generated as absolute URLs. If you
                 // need to generate relative URLs instead, call this method
                 ->generateRelativeUrls()
@@ -323,12 +416,18 @@ and render them in your own Twig template::
 
     class DashboardController extends AbstractDashboardController
     {
-        // ...
+        public function __construct(
+            private ChartBuilderInterface $chartBuilder,
+        ) {
+        }
+
+        // ... you'll also need to load some CSS/JavaScript assets to render
+        // the charts; this is explained later in the chapter about Design
 
         #[Route('/admin')]
-        public function admin(ChartBuilderInterface $chartBuilder): Response
+        public function index(): Response
         {
-            $chart = $chartBuilder->createChart(Chart::TYPE_LINE);
+            $chart = $this->chartBuilder->createChart(Chart::TYPE_LINE);
             // ...set chart data and options somehow
 
             return $this->render('admin/my-dashboard.html.twig', [
@@ -339,11 +438,24 @@ and render them in your own Twig template::
 
 .. note::
 
-    Since ``index()`` is part of the Dashboard interface, you cannot add arguments
-    to it to inject dependencies. Instead, you can use another method name that is not defined in the
-    interface (e.g. ``admin()``).
+    Since ``index()`` is part of the ``Dashboard`` interface, you cannot add arguments
+    to it to inject dependencies (such as ``ChartBuilderInterface`` in the above
+    example). Instead, inject dependencies in the controller constructor or use
+    a method name different from the ones defined in the interface.
 
-Another popular option is to make the dashboard redirect to the most common task
+To use EasyAdmin's built-in layout on your custom dashboard (e.g. the main menu
+bar on the left - explained in the next section), make your template extend
+`vendor/easycorp/easyadmin-bundle/src/Resources/views/layout.html.twig` and override
+some blocks::
+
+    {# templates/admin/my_dashboard.html.twig #}
+    {% extends '@EasyAdmin/layout.html.twig' %}
+
+    {% block main %}
+        {# ... #}
+    {% endblock main %}
+
+Another popular option is to avoid a dashboard at all and instead redirect to the most common task
 for people working on the backend. This requires :ref:`generating admin URLs <generate-admin-urls>`,
 and :doc:`CRUD controllers </crud>`, which is explained in detail later::
 
@@ -355,9 +467,13 @@ and :doc:`CRUD controllers </crud>`, which is explained in detail later::
     {
         // ...
 
-        #[Route('/admin')]
+        #[Route('/admin', name: 'admin')]
         public function index(): Response
         {
+            // when using pretty admin URLs, you can redirect directly to some route
+            return $this->redirectToRoute('admin_post_index');
+
+            // when using legacy admin URLs, use the URL generator to build the needed URL
             $adminUrlGenerator = $this->container->get(AdminUrlGenerator::class);
 
             // Option 1. Make your dashboard redirect to the same page for all users
@@ -381,7 +497,7 @@ reasons, a backend can only access to the resources associated to the dashboard
 via the main menu.
 
 The main menu is a collection of objects implementing
-``EasyCorp\Bundle\EasyAdminBundle\Contracts\Menu\MenuInterface`` that configure
+``EasyCorp\Bundle\EasyAdminBundle\Contracts\Menu\MenuItemInterface`` that configure
 the look and behavior of each menu item::
 
     use App\Entity\BlogPost;
@@ -412,7 +528,15 @@ the look and behavior of each menu item::
     }
 
 The first argument of ``MenuItem::new()`` is the label displayed by the item and
-the second argument is the full CSS class of the `FontAwesome`_ icon to display.
+the second argument is the icon to display. The icon name follows the pattern
+``icon_set:icon_name``, the same as used in `Symfony UX Icons`_.
+
+.. note::
+
+    By default, EasyAdmin assumes that icon names correspond to `FontAwesome`_ CSS
+    classes. The necessary CSS styles and web fonts are included by default too,
+    so you don't need to take any additional steps to use FontAwesome icons. Alternatively,
+    you can :ref:`use your own icon sets <icon-customization>` instead of FontAwesome.
 
 Menu Item Configuration Options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -428,14 +552,17 @@ All menu items define the following methods to configure some options:
 * ``setPermission(string $permission)``, sets the `Symfony security permission`_
   that the user must have to see this menu item. Read the :ref:`menu security reference <security-menu>`
   for more details.
-* ``setBadge($content, string $style='secondary')``, renders the given content
+* ``setHtmlAttribute(string $name, mixed $value)``, sets a custom HTML attribute
+  in the HTML element that renders the menu item.
+* ``setBadge($content, string $style='secondary', array $htmlAttributes = [])``, renders the given content
   as a badge of the menu item. It's commonly used to show notification counts.
   The first argument can be any value that can be converted to a string in a Twig
   template (numbers, strings, *stringable* objects, etc.) The second argument is
   one of the predefined Bootstrap styles (``primary``, ``secondary``, ``success``,
   ``danger``, ``warning``, ``info``, ``light``, ``dark``) or an arbitrary string
   content which is passed as the value of the ``style`` attribute of the HTML
-  element associated to the badge.
+  element associated to the badge. The third argument allows to set custom
+  HTML attributes in the element that renders the badge.
 
 The rest of options depend on each menu item type, as explained in the next sections.
 
@@ -862,14 +989,12 @@ applications can rely on its default values:
 
     use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
     use Symfony\Component\HttpFoundation\Response;
-    use Symfony\Component\Routing\Annotation\Route;
+    use Symfony\Component\Routing\Attribute\Route;
     use Symfony\Component\Security\Http\Authentication\AuthenticationUtils;
 
     class SecurityController extends AbstractController
     {
-        /**
-         * @Route("/login", name="login")
-         */
+        #[Route("/login", name="login")]
         public function login(AuthenticationUtils $authenticationUtils): Response
         {
             $error = $authenticationUtils->getLastAuthenticationError();
@@ -990,10 +1115,12 @@ etc. Example:
 .. _`Symfony controllers`: https://symfony.com/doc/current/controller.html
 .. _`Symfony route annotations`: https://symfony.com/doc/current/routing.html#creating-routes-as-annotations
 .. _`context object`: https://wiki.c2.com/?ContextObject
-.. _`FontAwesome`: https://fontawesome.com/v6/search?m=free
+.. _`FontAwesome`: https://fontawesome.com/
 .. _`allowed values for the "rel" attribute`: https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types
 .. _`Symfony security permission`: https://symfony.com/doc/current/security.html#roles
 .. _`logout feature`: https://symfony.com/doc/current/security.html#logging-out
 .. _`Symfony translation`: https://symfony.com/doc/current/components/translation.html
 .. _`translation domain`: https://symfony.com/doc/current/components/translation.html#using-message-domains
 .. _`Symfony UX Chart.js`: https://symfony.com/bundles/ux-chartjs/current/index.html
+.. _`custom Symfony route loader`: https://symfony.com/doc/current/routing/custom_route_loader.html
+.. _`Symfony UX Icons`: https://symfony.com/bundles/ux-icons/current/index.html

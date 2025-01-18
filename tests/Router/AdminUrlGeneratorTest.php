@@ -6,9 +6,10 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Action;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Option\EA;
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Provider\AdminContextProvider;
-use EasyCorp\Bundle\EasyAdminBundle\Registry\CrudControllerRegistry;
 use EasyCorp\Bundle\EasyAdminBundle\Registry\DashboardControllerRegistry;
+use EasyCorp\Bundle\EasyAdminBundle\Router\AdminRouteGenerator;
 use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGeneratorInterface;
 use Symfony\Bridge\PhpUnit\ExpectDeprecationTrait;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -68,7 +69,7 @@ class AdminUrlGeneratorTest extends WebTestCase
 
         $adminUrlGenerator->set('foo1', 'bar1');
         $adminUrlGenerator->unsetAll();
-        $this->assertSame('http://localhost/admin', $adminUrlGenerator->generateUrl());
+        $this->assertSame('/admin', $adminUrlGenerator->generateUrl());
     }
 
     public function testUnsetAllExcept()
@@ -176,15 +177,37 @@ class AdminUrlGeneratorTest extends WebTestCase
         $this->assertNull($adminUrlGenerator->get(EA::CRUD_CONTROLLER_FQCN));
 
         $adminUrlGenerator->setController('App\Controller\Admin\SomeCrudController');
-        $adminUrlGenerator->set(EA::MENU_INDEX, 3);
         $adminUrlGenerator->set('foo', 'bar');
         $adminUrlGenerator->setRoute('some_route', ['key' => 'value']);
 
         $this->assertNull($adminUrlGenerator->get(EA::CRUD_CONTROLLER_FQCN));
         $this->assertNull($adminUrlGenerator->get('foo'));
+    }
+
+    /**
+     * @legacy
+     */
+    public function testLegacyParameters()
+    {
+        $adminUrlGenerator = $this->getAdminUrlGenerator();
+        $adminUrlGenerator->set(EA::MENU_INDEX, 3);
+
         $this->assertSame(3, $adminUrlGenerator->get(EA::MENU_INDEX));
     }
 
+    /**
+     * @group legacy
+     */
+    public function testDeprecatedParameterMessage()
+    {
+        $adminUrlGenerator = $this->getAdminUrlGenerator();
+        $this->expectDeprecation('Since easycorp/easyadmin-bundle 4.5.0: Using the "menuIndex" query parameter is deprecated. Menu items are now highlighted automatically based on the Request data, so you don\'t have to deal with menu items manually anymore.');
+        $adminUrlGenerator->set('menuIndex', 1);
+    }
+
+    /**
+     * @group legacy
+     */
     public function testIncludeReferrer()
     {
         $adminUrlGenerator = $this->getAdminUrlGenerator();
@@ -193,6 +216,9 @@ class AdminUrlGeneratorTest extends WebTestCase
         $this->assertSame('http://localhost/admin?foo=bar&referrer=/?foo%3Dbar', $adminUrlGenerator->generateUrl());
     }
 
+    /**
+     * @group legacy
+     */
     public function testRemoveReferrer()
     {
         $adminUrlGenerator = $this->getAdminUrlGenerator();
@@ -205,14 +231,16 @@ class AdminUrlGeneratorTest extends WebTestCase
         $this->assertSame('http://localhost/admin?foo=bar', $adminUrlGenerator->generateUrl());
     }
 
-    public function testDefaultReferrer()
+    public function testNoReferrerByDefault()
     {
         $adminUrlGenerator = $this->getAdminUrlGenerator();
 
-        $adminUrlGenerator->includeReferrer();
-        $this->assertSame('http://localhost/admin?foo=bar&referrer=/?foo%3Dbar', $adminUrlGenerator->generateUrl());
+        $this->assertStringNotContainsString('referrer', $adminUrlGenerator->generateUrl());
     }
 
+    /**
+     * @group legacy
+     */
     public function testCustomReferrer()
     {
         $adminUrlGenerator = $this->getAdminUrlGenerator();
@@ -221,6 +249,9 @@ class AdminUrlGeneratorTest extends WebTestCase
         $this->assertSame('http://localhost/admin?foo=bar&referrer=any_custom_value', $adminUrlGenerator->generateUrl());
     }
 
+    /**
+     * @group legacy
+     */
     public function testPersistentCustomReferrer()
     {
         $adminUrlGenerator = $this->getAdminUrlGenerator();
@@ -247,7 +278,7 @@ class AdminUrlGeneratorTest extends WebTestCase
         $this->assertSame('http://localhost/admin?crudAction=index&crudControllerFqcn=App%5CController%5CAdmin%5CSomeCrudController&foo=bar&foo1=bar1', $adminUrlGenerator->generateUrl());
     }
 
-    private function getAdminUrlGenerator(bool $signedUrls = false, bool $absoluteUrls = true): AdminUrlGenerator
+    private function getAdminUrlGenerator(bool $signedUrls = false, bool $absoluteUrls = true): AdminUrlGeneratorInterface
     {
         self::bootKernel();
 
@@ -273,14 +304,11 @@ class AdminUrlGeneratorTest extends WebTestCase
         $dashboardControllerRegistry->method('getNumberOfDashboards')->willReturn(2);
         $dashboardControllerRegistry->method('getFirstDashboardRoute')->willReturn('admin');
 
-        $crudControllerRegistry = $this->getMockBuilder(CrudControllerRegistry::class)->disableOriginalConstructor()->getMock();
-        $crudControllerRegistry->method('findCrudFqcnByCrudId')->willReturnMap([
-            ['a1b2c3', 'App\Controller\Admin\SomeCrudController'],
-        ]);
-
         $container = Kernel::MAJOR_VERSION >= 6 ? static::getContainer() : self::$container;
         $router = $container->get('router');
 
-        return new AdminUrlGenerator($adminContextProvider, $router, $dashboardControllerRegistry, $crudControllerRegistry);
+        $adminRouteGenerator = $this->getMockBuilder(AdminRouteGenerator::class)->disableOriginalConstructor()->getMock();
+
+        return new AdminUrlGenerator($adminContextProvider, $router, $dashboardControllerRegistry, $adminRouteGenerator);
     }
 }

@@ -24,7 +24,7 @@ final class ClassMaker
      */
     public function make(string $generatedFilePathPattern, string $skeletonName, array $skeletonParameters): string
     {
-        $skeletonPath = sprintf('%s/%s', $this->kernel->locateResource('@EasyAdminBundle/Resources/skeleton'), $skeletonName);
+        $skeletonPath = sprintf('%s/%s', $this->kernel->locateResource('@EasyAdminBundle/src/Resources/skeleton'), $skeletonName);
         $generatedFileRelativeDir = u($generatedFilePathPattern)->beforeLast('/')->trimEnd('/')->toString();
         $generatedFileNamePattern = u($generatedFilePathPattern)->afterLast('/')->trimStart('/');
 
@@ -38,7 +38,7 @@ final class ClassMaker
         $generatedFileName = $generatedFileNamePattern->replace('{number}', '');
         $i = 1;
         while ($this->fs->exists(sprintf('%s/%s', $generatedFileDir, $generatedFileName))) {
-            $generatedFileName = $generatedFileNamePattern->replace('{number}', ++$i);
+            $generatedFileName = $generatedFileNamePattern->replace('{number}', (string) ++$i);
         }
         $generatedFilePath = sprintf('%s/%s', $generatedFileDir, $generatedFileName);
 

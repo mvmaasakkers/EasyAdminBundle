@@ -1,9 +1,11 @@
 <?php
 
+use EasyCorp\Bundle\EasyAdminBundle\Tests\PrettyUrlsTestApplication\Kernel as PrettyUrlsKernel;
 use EasyCorp\Bundle\EasyAdminBundle\Tests\TestApplication\Kernel;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\ConsoleOutput;
+use Symfony\Component\Filesystem\Filesystem;
 
 // needed to avoid encoding issues when running tests on different platforms
 setlocale(\LC_ALL, 'en_US.UTF-8');
@@ -13,12 +15,13 @@ date_default_timezone_set('UTC');
 
 // we want final classes in code but we need non-final classes in tests
 // after trying many solutions (see https://tomasvotruba.com/blog/2019/03/28/how-to-mock-final-classes-in-phpunit/)
-// none ws reliable enough, so this custom solution removes the 'final' keyword
+// none was reliable enough, so this custom solution removes the 'final' keyword
 // from the source code of all project files (and restore it when tests finish)
 // This has to be done BEFORE loading any PHP classes. Otherwise the changes in the
 // source code contents are ignored
-define('EA_TEST_COMMENT_MARKER_START', '/* added-by-ea-tests');
-define('EA_TEST_COMMENT_MARKER_END', '*/');
+const EA_TEST_COMMENT_MARKER_START = '/* added-by-ea-tests';
+const EA_TEST_COMMENT_MARKER_END = '*/';
+
 foreach (glob(__DIR__.'/../src/**/*.php') as $sourceFilePath) {
     $sourceFilePath = realpath($sourceFilePath);
     $sourceFileContents = file_get_contents($sourceFilePath);
@@ -36,7 +39,16 @@ if (!file_exists($file)) {
 }
 $autoload = require $file;
 
-$application = new Application(new Kernel());
+if ('1' === getenv('USE_PRETTY_URLS')) {
+    $kernel = new PrettyUrlsKernel();
+} else {
+    $kernel = new Kernel();
+}
+
+// delete the existing cache directory to avoid issues
+(new Filesystem())->remove($kernel->getCacheDir());
+
+$application = new Application($kernel);
 $application->setAutoExit(false);
 
 $input = new ArrayInput(['command' => 'doctrine:database:drop', '--no-interaction' => true, '--force' => true]);

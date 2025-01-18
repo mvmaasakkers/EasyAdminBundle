@@ -15,6 +15,8 @@ final class AssociationField implements FieldInterface
 
     public const OPTION_AUTOCOMPLETE = 'autocomplete';
     public const OPTION_EMBEDDED_CRUD_FORM_CONTROLLER = 'crudControllerFqcn';
+    /** @deprecated since easycorp/easyadmin-bundle 4.4.3 use AssociationField::OPTION_EMBEDDED_CRUD_FORM_CONTROLLER */
+    public const OPTION_CRUD_CONTROLLER = self::OPTION_EMBEDDED_CRUD_FORM_CONTROLLER;
     public const OPTION_WIDGET = 'widget';
     public const OPTION_QUERY_BUILDER_CALLABLE = 'queryBuilderCallable';
     /** @internal this option is intended for internal use only */
@@ -33,6 +35,9 @@ final class AssociationField implements FieldInterface
 
     public const OPTION_EMBEDDED_CRUD_FORM_NEW_PAGE_NAME = 'crudNewPageName';
     public const OPTION_EMBEDDED_CRUD_FORM_EDIT_PAGE_NAME = 'crudEditPageName';
+    // the name of the property in the associated entity used to sort the results (only for *-To-One associations)
+    public const OPTION_SORT_PROPERTY = 'sortProperty';
+    public const OPTION_ESCAPE_HTML_CONTENTS = 'escapeHtml';
 
     /**
      * @param TranslatableInterface|string|false|null $label
@@ -54,7 +59,8 @@ final class AssociationField implements FieldInterface
             ->setCustomOption(self::OPTION_DOCTRINE_ASSOCIATION_TYPE, null)
             ->setCustomOption(self::OPTION_RENDER_AS_EMBEDDED_FORM, false)
             ->setCustomOption(self::OPTION_EMBEDDED_CRUD_FORM_NEW_PAGE_NAME, null)
-            ->setCustomOption(self::OPTION_EMBEDDED_CRUD_FORM_EDIT_PAGE_NAME, null);
+            ->setCustomOption(self::OPTION_EMBEDDED_CRUD_FORM_EDIT_PAGE_NAME, null)
+            ->setCustomOption(self::OPTION_ESCAPE_HTML_CONTENTS, true);
     }
 
     public function autocomplete(): self
@@ -91,6 +97,20 @@ final class AssociationField implements FieldInterface
         $this->setCustomOption(self::OPTION_EMBEDDED_CRUD_FORM_CONTROLLER, $crudControllerFqcn);
         $this->setCustomOption(self::OPTION_EMBEDDED_CRUD_FORM_NEW_PAGE_NAME, $crudNewPageName);
         $this->setCustomOption(self::OPTION_EMBEDDED_CRUD_FORM_EDIT_PAGE_NAME, $crudEditPageName);
+
+        return $this;
+    }
+
+    public function setSortProperty(string $orderProperty): self
+    {
+        $this->setCustomOption(self::OPTION_SORT_PROPERTY, $orderProperty);
+
+        return $this;
+    }
+
+    public function renderAsHtml(bool $asHtml = true): self
+    {
+        $this->setCustomOption(self::OPTION_ESCAPE_HTML_CONTENTS, !$asHtml);
 
         return $this;
     }

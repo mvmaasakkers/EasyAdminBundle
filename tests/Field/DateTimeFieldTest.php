@@ -14,10 +14,10 @@ class DateTimeFieldTest extends AbstractFieldTest
 
         $intlFormatterMock = $this->getMockBuilder(IntlFormatter::class)
             ->disableOriginalConstructor()
-            ->setMethods(['formatDateTime'])
+            ->onlyMethods(['formatDateTime'])
             ->getMock();
         $intlFormatterMock->method('formatDateTime')->willReturnCallback(
-            static function ($value, ?string $dateFormat = 'medium', ?string $timeFormat = 'medium', string $pattern = '', $timezone = null, string $calendar = 'gregorian', string $locale = null) { return sprintf('value: %s | dateFormat: %s | timeFormat: %s | pattern: %s | timezone: %s | calendar: %s | locale: %s', $value->format('Y-m-d'), $dateFormat, $timeFormat, $pattern, $timezone, $calendar, $locale); }
+            static function ($value, ?string $dateFormat = 'medium', ?string $timeFormat = 'medium', string $pattern = '', $timezone = null, string $calendar = 'gregorian', ?string $locale = null) { return sprintf('value: %s | dateFormat: %s | timeFormat: %s | pattern: %s | timezone: %s | calendar: %s | locale: %s', $value->format('Y-m-d'), $dateFormat, $timeFormat, $pattern, $timezone, $calendar, $locale); }
         );
 
         $this->configurator = new DateTimeConfigurator($intlFormatterMock);
