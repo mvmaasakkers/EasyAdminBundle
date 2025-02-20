@@ -4,7 +4,9 @@ namespace EasyCorp\Bundle\EasyAdminBundle\Context;
 
 use EasyCorp\Bundle\EasyAdminBundle\Config\Option\EA;
 use EasyCorp\Bundle\EasyAdminBundle\Config\UserMenu;
+use EasyCorp\Bundle\EasyAdminBundle\Contracts\Context\AdminContextInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Controller\DashboardControllerInterface;
+use EasyCorp\Bundle\EasyAdminBundle\Contracts\Factory\MenuFactoryInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\AssetsDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\CrudDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\DashboardDto;
@@ -14,7 +16,6 @@ use EasyCorp\Bundle\EasyAdminBundle\Dto\LocaleDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\MainMenuDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\SearchDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\UserMenuDto;
-use EasyCorp\Bundle\EasyAdminBundle\Factory\MenuFactory;
 use EasyCorp\Bundle\EasyAdminBundle\Registry\CrudControllerRegistry;
 use EasyCorp\Bundle\EasyAdminBundle\Registry\TemplateRegistry;
 use Symfony\Component\HttpFoundation\Request;
@@ -23,9 +24,11 @@ use Symfony\Component\Security\Core\User\UserInterface;
 /**
  * A context object that stores all the state and config of the current admin request.
  *
+ * IMPORTANT: any new methods added here MUST be duplicated in the AdminContextProvider class.
+ *
  * @author Javier Eguiluz <javier.eguiluz@gmail.com>
  */
-final class AdminContext
+final class AdminContext implements AdminContextInterface
 {
     private Request $request;
     private ?UserInterface $user;
@@ -37,12 +40,13 @@ final class AdminContext
     private AssetsDto $assetDto;
     private ?CrudDto $crudDto;
     private ?SearchDto $searchDto;
-    private MenuFactory $menuFactory;
+    private MenuFactoryInterface $menuFactory;
     private TemplateRegistry $templateRegistry;
     private ?MainMenuDto $mainMenuDto = null;
     private ?UserMenuDto $userMenuDto = null;
+    private bool $usePrettyUrls;
 
-    public function __construct(Request $request, ?UserInterface $user, I18nDto $i18nDto, CrudControllerRegistry $crudControllers, DashboardDto $dashboardDto, DashboardControllerInterface $dashboardController, AssetsDto $assetDto, ?CrudDto $crudDto, ?EntityDto $entityDto, ?SearchDto $searchDto, MenuFactory $menuFactory, TemplateRegistry $templateRegistry)
+    public function __construct(Request $request, ?UserInterface $user, I18nDto $i18nDto, CrudControllerRegistry $crudControllers, DashboardDto $dashboardDto, DashboardControllerInterface $dashboardController, AssetsDto $assetDto, ?CrudDto $crudDto, ?EntityDto $entityDto, ?SearchDto $searchDto, MenuFactoryInterface $menuFactory, TemplateRegistry $templateRegistry, bool $usePrettyUrls = false)
     {
         $this->request = $request;
         $this->user = $user;
@@ -56,6 +60,7 @@ final class AdminContext
         $this->searchDto = $searchDto;
         $this->menuFactory = $menuFactory;
         $this->templateRegistry = $templateRegistry;
+        $this->usePrettyUrls = $usePrettyUrls;
     }
 
     public function getRequest(): Request
@@ -65,7 +70,16 @@ final class AdminContext
 
     public function getReferrer(): ?string
     {
-        return $this->request->query->get(EA::REFERRER);
+        trigger_deprecation(
+            'easycorp/easyadmin-bundle',
+            '4.8.11',
+            'EasyAdmin URLs no longer include the referrer URL. If you still need it, you can get the referrer provided by browsers via $context->getRequest()->headers->get(\'referer\').',
+            __METHOD__,
+        );
+
+        $referrer = $this->request->query->get(EA::REFERRER);
+
+        return '' !== $referrer ? $referrer : null;
     }
 
     public function getI18n(): I18nDto
@@ -95,12 +109,24 @@ final class AdminContext
 
     public function getSignedUrls(): bool
     {
+        trigger_deprecation(
+            'easycorp/easyadmin-bundle',
+            '4.1.0',
+            'EasyAdmin URLs no longer include signatures because they don\'t provide any additional security. The "%s" method will be removed in EasyAdmin 5.0.0, so you should stop using it.',
+            __METHOD__
+        );
+
         return $this->dashboardDto->getSignedUrls();
     }
 
     public function getAbsoluteUrls(): bool
     {
         return $this->dashboardDto->getAbsoluteUrls();
+    }
+
+    public function usePrettyUrls(): bool
+    {
+        return $this->usePrettyUrls;
     }
 
     public function getDashboardTitle(): string
@@ -138,6 +164,11 @@ final class AdminContext
         return $this->dashboardDto->isDarkModeEnabled();
     }
 
+    public function getDashboardDefaultColorScheme(): string
+    {
+        return $this->dashboardDto->getDefaultColorScheme();
+    }
+
     /**
      * @return LocaleDto[]
      */
@@ -154,10 +185,8 @@ final class AdminContext
 
         $configuredMenuItems = $this->dashboardControllerInstance->configureMenuItems();
         $mainMenuItems = \is_array($configuredMenuItems) ? $configuredMenuItems : iterator_to_array($configuredMenuItems, false);
-        $selectedMenuIndex = $this->request->query->getInt(EA::MENU_INDEX, -1);
-        $selectedMenuSubIndex = $this->request->query->getInt(EA::SUBMENU_INDEX, -1);
 
-        return $this->mainMenuDto = $this->menuFactory->createMainMenu($mainMenuItems, $selectedMenuIndex, $selectedMenuSubIndex);
+        return $this->mainMenuDto = $this->menuFactory->createMainMenu($mainMenuItems);
     }
 
     public function getUserMenu(): UserMenuDto

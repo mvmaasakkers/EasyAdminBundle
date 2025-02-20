@@ -3,6 +3,7 @@
 namespace EasyCorp\Bundle\EasyAdminBundle\Config;
 
 use EasyCorp\Bundle\EasyAdminBundle\Dto\ActionConfigDto;
+use Symfony\Component\ExpressionLanguage\Expression;
 use function Symfony\Component\Translation\t;
 
 /**
@@ -100,7 +101,7 @@ final class Actions
         return $this;
     }
 
-    public function setPermission(string $actionName, string $permission): self
+    public function setPermission(string $actionName, string|Expression $permission): self
     {
         $this->dto->setActionPermission($actionName, $permission);
 
@@ -122,7 +123,7 @@ final class Actions
         // if 'delete' is disabled, 'batch delete' is disabled automatically (but the
         // opposite doesn't happen). This is the most common case, but user can re-enable
         // the 'batch delete' action if needed manually
-        if (\in_array(Action::DELETE, $disabledActionNames)) {
+        if (\in_array(Action::DELETE, $disabledActionNames, true)) {
             $disabledActionNames[] = Action::BATCH_DELETE;
         }
 
@@ -183,7 +184,7 @@ final class Actions
         if (Action::DELETE === $actionName) {
             $cssClass = \in_array($pageName, [Crud::PAGE_DETAIL, Crud::PAGE_EDIT], true) ? 'btn btn-secondary pr-0 text-danger' : 'text-danger';
 
-            return Action::new(Action::DELETE, t('action.delete', domain: 'EasyAdminBundle'), Crud::PAGE_INDEX === $pageName ? null : 'fa fa-fw fa-trash-o')
+            return Action::new(Action::DELETE, t('action.delete', domain: 'EasyAdminBundle'), Crud::PAGE_INDEX === $pageName ? null : 'internal:delete')
                 ->linkToCrudAction(Action::DELETE)
                 ->setCssClass('action-'.Action::DELETE)
                 ->addCssClass($cssClass);
@@ -199,7 +200,7 @@ final class Actions
         }
 
         if (Action::SAVE_AND_CONTINUE === $actionName) {
-            return Action::new(Action::SAVE_AND_CONTINUE, t(Crud::PAGE_EDIT === $pageName ? 'action.save_and_continue' : 'action.create_and_continue', domain: 'EasyAdminBundle'), 'far fa-edit')
+            return Action::new(Action::SAVE_AND_CONTINUE, t(Crud::PAGE_EDIT === $pageName ? 'action.save_and_continue' : 'action.create_and_continue', domain: 'EasyAdminBundle'), 'internal:edit')
                 ->setCssClass('action-'.Action::SAVE_AND_CONTINUE)
                 ->addCssClass('btn btn-secondary action-save')
                 ->displayAsButton()

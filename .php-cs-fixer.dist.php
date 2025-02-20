@@ -23,8 +23,7 @@ return $config
         'fopen_flags' => false,
         'ordered_imports' => true,
         'protected_to_private' => false,
-        // Part of @Symfony:risky in PHP-CS-Fixer 2.13.0. To be removed from the config file once upgrading
-        'native_function_invocation' => ['include' => ['@compiler_optimized'], 'scope' => 'namespaced', 'strict' => true],
+        'native_function_invocation' => ['exclude' => ['sprintf']],
         // Part of future @Symfony ruleset in PHP-CS-Fixer To be removed from the config file once upgrading
         'phpdoc_types_order' => ['null_adjustment' => 'always_last', 'sort_algorithm' => 'none'],
         'single_line_throw' => false,
@@ -32,5 +31,7 @@ return $config
         'non_printable_character' => false,
         'blank_line_between_import_groups' => false,
         'no_trailing_comma_in_singleline' => false,
+        'nullable_type_declaration_for_default_null_value' => true,
+        'phpdoc_to_comment' => false,
     ))
 ;

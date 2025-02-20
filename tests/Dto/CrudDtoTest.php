@@ -21,7 +21,7 @@ class CrudDtoTest extends TestCase
             $crudDto->setEntityLabelInPlural($setLabel);
         }
 
-        $entityInstance = new class() {
+        $entityInstance = new class {
             public function getPrimaryKeyValue()
             {
                 return '42';
@@ -31,7 +31,7 @@ class CrudDtoTest extends TestCase
         $this->assertSame($expectedGetLabel, $crudDto->getEntityLabelInPlural($entityInstance));
     }
 
-    public function provideLabels()
+    public static function provideLabels()
     {
         yield [null, null];
         yield ['', ''];

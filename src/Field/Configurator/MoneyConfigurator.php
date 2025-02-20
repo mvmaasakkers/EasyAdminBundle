@@ -4,10 +4,10 @@ namespace EasyCorp\Bundle\EasyAdminBundle\Field\Configurator;
 
 use EasyCorp\Bundle\EasyAdminBundle\Context\AdminContext;
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Field\FieldConfiguratorInterface;
+use EasyCorp\Bundle\EasyAdminBundle\Contracts\Intl\IntlFormatterInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\FieldDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\MoneyField;
-use EasyCorp\Bundle\EasyAdminBundle\Intl\IntlFormatter;
 use Symfony\Component\Intl\Currencies;
 use Symfony\Component\PropertyAccess\PropertyAccessorInterface;
 
@@ -16,10 +16,12 @@ use Symfony\Component\PropertyAccess\PropertyAccessorInterface;
  */
 final class MoneyConfigurator implements FieldConfiguratorInterface
 {
-    private IntlFormatter $intlFormatter;
+    private IntlFormatterInterface $intlFormatter;
     private PropertyAccessorInterface $propertyAccessor;
 
-    public function __construct(IntlFormatter $intlFormatter, PropertyAccessorInterface $propertyAccessor)
+    public const DEFAULT_DIVISOR = 100;
+
+    public function __construct(IntlFormatterInterface $intlFormatter, PropertyAccessorInterface $propertyAccessor)
     {
         $this->intlFormatter = $intlFormatter;
         $this->propertyAccessor = $propertyAccessor;
@@ -41,15 +43,15 @@ final class MoneyConfigurator implements FieldConfiguratorInterface
         $numDecimals = $field->getCustomOption(MoneyField::OPTION_NUM_DECIMALS);
         $field->setFormTypeOption('scale', $numDecimals);
 
-        $storedAsCents = $field->getCustomOption(MoneyField::OPTION_STORED_AS_CENTS);
-        $field->setFormTypeOption('divisor', $storedAsCents ? 100 : 1);
+        $isStoredAsCents = true === $field->getCustomOption(MoneyField::OPTION_STORED_AS_CENTS);
+        $field->setFormTypeOptionIfNotSet('divisor', $isStoredAsCents ? self::DEFAULT_DIVISOR : 1);
 
         if (null === $field->getValue()) {
             return;
         }
 
-        $amount = $storedAsCents ? $field->getValue() / 100 : $field->getValue();
-
+        $divisor = $field->getFormTypeOption('divisor');
+        $amount = $field->getValue() / $divisor;
         $formattedValue = $this->intlFormatter->formatCurrency($amount, $currencyCode, ['fraction_digit' => $numDecimals]);
         $field->setFormattedValue($formattedValue);
     }

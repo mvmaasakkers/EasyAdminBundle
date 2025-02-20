@@ -2,8 +2,8 @@ Design
 ======
 
 The design of the backend is ready for any kind of application. It's been
-created with `Bootstrap 5`_, `Font Awesome icons`_ and some custom CSS and
-JavaScript code; all managed by `Webpack`_ via Symfony's `Webpack Encore`_.
+created with `Bootstrap 5`_, and some custom CSS and JavaScript code; all
+managed by `Webpack`_ via Symfony's `Webpack Encore`_.
 
 Like any other Symfony bundle, assets are copied to (or symlinked from) the
 ``public/bundles/`` directory of your application when installing or updating
@@ -19,6 +19,55 @@ manually:
 Depending on your needs, there are several ways of customizing the design. Some
 of them require pure CSS/JavaScript code and others require overriding and/or
 creating new Twig templates.
+
+.. _icon-customization:
+
+Changing the Backend Icons
+--------------------------
+
+.. versionadded:: 4.16
+
+    The option to configure the icon set was introduced in EasyAdmin 4.16.0.
+
+By default, EasyAdmin uses `FontAwesome icons`_ both for the built-in interface
+icons and any custom icons that you add to menu items, fields, form tabs, etc.
+The full FontAwesome icon set (~2,000 icons) is already included in EasyAdmin,
+so you don't need to download any of these icons.
+
+If you prefer to use other icons, call the ``useCustomIconSet()`` in your dashboard::
+
+    namespace App\Controller\Admin;
+
+    use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
+    use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
+    use EasyCorp\Bundle\EasyAdminBundle\Config\Option\IconSet;
+    use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
+
+    #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
+    class DashboardController extends AbstractDashboardController
+    {
+        public function configureAssets(): Assets
+        {
+            return Assets::new()
+                ->useCustomIconSet()
+            ;
+        }
+
+        // ...
+    }
+
+Then, whenever you define a custom icon for any EasyAdmin feature, use the full
+icon prefix and name (``lucide:map-pin``, ``ic:baseline-calendar-month``, etc.)
+that you would typically use in `Symfony UX Icons`_.
+
+If all your icons use a common prefix (e.g. ``tabler:`` when using the `Tabler`_
+icons), pass it to the ``useCustomIconSet()`` method::
+
+    return Assets::new()->useCustomIconSet('tabler');
+
+Now, the ``tabler:`` prefix will be added automatically to all your custom icon
+names. This way, you can use names like ``user`` and ``file`` instead of
+``tabler:user`` and ``tabler:file``.
 
 .. _template-customization:
 
@@ -92,9 +141,11 @@ This option allows you to render certain parts of the backend with your own Twig
 templates. First, you can replace some templates globally in the
 :doc:`dashboard </dashboards>`::
 
+    use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
     use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
     use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
 
+    #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
     class DashboardController extends AbstractDashboardController
     {
         // ...
@@ -116,7 +167,7 @@ templates. First, you can replace some templates globally in the
         }
     }
 
-You can also replace templates per :doc:`CRUD controller </crud>` (this override
+You can also replace templates per :doc:`CRUD controller </crud>` (this overrides
 any change done in the dashboard)::
 
     namespace App\Controller\Admin;
@@ -247,6 +298,14 @@ the :doc:`CRUD controllers </crud>` to add your own CSS and JavaScript files::
         public function configureAssets(Assets $assets): Assets
         {
             return $assets
+                // imports the given entrypoint defined in the importmap.php file of AssetMapper
+                // it's equivalent to adding this inside the <head> element:
+                // {{ importmap('admin') }}
+                ->addAssetMapperEntry('admin')
+                // you can also import multiple entries
+                // it's equivalent to calling {{ importmap(['app', 'admin']) }}
+                ->addAssetMapperEntry('app', 'admin')
+
                 // adds the CSS and JS assets associated to the given Webpack Encore entry
                 // it's equivalent to adding these inside the <head> element:
                 // {{ encore_entry_link_tags('...') }} and {{ encore_entry_script_tags('...') }}
@@ -288,9 +347,13 @@ and ``<script>`` tags, pass an ``Asset`` object to the ``addCssFile()``,
 
         ->addWebpackEncoreEntry(Asset::new('admin-app')->webpackEntrypointName('...'))
 
+        // adding full Asset objects for AssetMapper entries work too, but it's
+        // useless because entries can't define any property, only their name
+        ->addAssetMapperEntry(Asset::new('admin'))
+
         ->addCssFile(Asset::new('build/admin-detail.css')->onlyOnDetail())
         ->addJsFile(Asset::new('build/admin.js')->onlyWhenCreating())
-        ->addWebpackEncoreEntry(Asset::new('admin-app')->ignoreOnForms())
+        ->addWebpackEncoreEntry(Asset::new('admin-app')->ignoreOnForm())
 
         // you can also define the Symfony Asset package which the asset belongs to
         ->addCssFile(Asset::new('some-path/foo.css')->package('legacy_assets'))
@@ -331,9 +394,11 @@ To override any of them, create a CSS file and redefine the variable values:
 
 Then, load this CSS file in your dashboard and/or resource admin::
 
+    use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
     use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
     use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
 
+    #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
     class DashboardController extends AbstractDashboardController
     {
         // ...
@@ -348,7 +413,7 @@ Then, load this CSS file in your dashboard and/or resource admin::
 
     Because of how Bootstrap styles are defined, it's not possible to use CSS
     variables to override every style. Sometimes you may need to also override
-    the value of some `Sass`_ variables (which are defined in the 
+    the value of some `Sass`_ variables (which are defined in the
     ``assets/css/easyadmin-theme/variables-bootstrap.scss`` file).
 
 CSS Selectors
@@ -400,10 +465,12 @@ fixed in future versions.
 
 .. _`Bootstrap 5`: https://github.com/twbs/bootstrap
 .. _`Sass`: https://sass-lang.com/
-.. _`Font Awesome icons`: https://github.com/FortAwesome/Font-Awesome
 .. _`Webpack`: https://webpack.js.org/
 .. _`Webpack Encore`: https://symfony.com/doc/current/frontend.html
 .. _`override templates from bundles`: https://symfony.com/doc/current/bundles/override.html#templates
 .. _`customize individual form fields`: https://symfony.com/doc/current/form/form_customization.html
 .. _`form fragment naming rules`: https://symfony.com/doc/current/form/form_themes.html#form-fragment-naming
 .. _`form theme`: https://symfony.com/doc/current/form/form_themes.html
+.. _`FontAwesome icons`: https://fontawesome.com/v6/search?m=free
+.. _`Symfony UX Icons`: https://symfony.com/bundles/ux-icons/current/index.html
+.. _`Tabler`: https://tabler.io/icons

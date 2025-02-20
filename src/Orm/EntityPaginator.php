@@ -9,26 +9,31 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\Option\EA;
 use EasyCorp\Bundle\EasyAdminBundle\Contracts\Orm\EntityPaginatorInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\PaginatorDto;
 use EasyCorp\Bundle\EasyAdminBundle\Factory\EntityFactory;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGeneratorInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * @author Javier Eguiluz <javier.eguiluz@gmail.com>
  */
 final class EntityPaginator implements EntityPaginatorInterface
 {
-    private AdminUrlGenerator $adminUrlGenerator;
+    private AdminUrlGeneratorInterface $adminUrlGenerator;
     private EntityFactory $entityFactory;
+    private RequestStack $requestStack;
     private ?int $currentPage = null;
     private ?int $pageSize = null;
     private ?int $rangeSize = null;
     private ?int $rangeEdgeSize = null;
     private $results;
     private $numResults;
+    private ?int $rangeFirstResultNumber = null;
+    private ?int $rangeLastResultNumber = null;
 
-    public function __construct(AdminUrlGenerator $adminUrlGenerator, EntityFactory $entityFactory)
+    public function __construct(AdminUrlGeneratorInterface $adminUrlGenerator, EntityFactory $entityFactory, RequestStack $requestStack)
     {
         $this->adminUrlGenerator = $adminUrlGenerator;
         $this->entityFactory = $entityFactory;
+        $this->requestStack = $requestStack;
     }
 
     public function paginate(PaginatorDto $paginatorDto, QueryBuilder $queryBuilder): EntityPaginatorInterface
@@ -38,6 +43,8 @@ final class EntityPaginator implements EntityPaginatorInterface
         $this->rangeEdgeSize = $paginatorDto->getRangeEdgeSize();
         $this->currentPage = max(1, $paginatorDto->getPageNumber());
         $firstResult = ($this->currentPage - 1) * $this->pageSize;
+        $this->rangeFirstResultNumber = $this->pageSize * ($this->currentPage - 1) + 1;
+        $this->rangeLastResultNumber = $this->rangeFirstResultNumber + $this->pageSize - 1;
 
         $query = $queryBuilder
             ->setFirstResult($firstResult)
@@ -62,13 +69,24 @@ final class EntityPaginator implements EntityPaginatorInterface
 
         $this->results = $paginator->getIterator();
         $this->numResults = $paginator->count();
+        if ($this->rangeLastResultNumber > $this->numResults) {
+            $this->rangeLastResultNumber = $this->numResults;
+        }
 
         return $this;
     }
 
     public function generateUrlForPage(int $page): string
     {
-        return $this->adminUrlGenerator->set(EA::PAGE, $page)->includeReferrer()->generateUrl();
+        $pageUrl = $this->adminUrlGenerator->set(EA::PAGE, $page);
+
+        $currentRequest = $this->requestStack->getCurrentRequest();
+        $usesPrettyUrls = null !== $crudControllerFqcn = $currentRequest->attributes->get(EA::CRUD_CONTROLLER_FQCN);
+        if ($usesPrettyUrls) {
+            $pageUrl->setController($crudControllerFqcn)->setAction($currentRequest->attributes->get(EA::CRUD_ACTION));
+        }
+
+        return $pageUrl->generateUrl();
     }
 
     public function getCurrentPage(): int
@@ -90,9 +108,9 @@ final class EntityPaginator implements EntityPaginatorInterface
      * This code was inspired by https://github.com/django/django/blob/55fabc53373a8c7ef31d8c4cffd2a07be0a88c2e/django/core/paginator.py#L134
      * (c) Django Project
      *
-     * @return int[]
+     * @return iterable<int|null>
      */
-    public function getPageRange(int $pagesOnEachSide = null, int $pagesOnEdges = null): iterable
+    public function getPageRange(?int $pagesOnEachSide = null, ?int $pagesOnEdges = null): iterable
     {
         $pagesOnEachSide = $pagesOnEachSide ?? $this->rangeSize;
         $pagesOnEdges = $pagesOnEdges ?? $this->rangeEdgeSize;
@@ -171,8 +189,29 @@ final class EntityPaginator implements EntityPaginatorInterface
         return $this->results;
     }
 
+    /*
+     * Returns the result number (e.g. 21) of the first value
+     * included in the current results range. It's useful to
+     * display a message like: "Showing 21 to 40 of 135 entries"
+     */
+    public function getRangeFirstResultNumber(): int
+    {
+        return $this->rangeFirstResultNumber;
+    }
+
+    /*
+     * Returns the result number (e.g. 40) of the last value
+     * included in the current results range. It's useful to
+     * display a message like: "Showing 21 to 40 of 135 entries"
+     */
+    public function getRangeLastResultNumber(): int
+    {
+        return $this->rangeLastResultNumber;
+    }
+
     public function getResultsAsJson(): string
     {
+        $jsonResult = [];
         foreach ($this->getResults() ?? [] as $entityInstance) {
             $entityDto = $this->entityFactory->createForEntityInstance($entityInstance);
 
@@ -182,8 +221,14 @@ final class EntityPaginator implements EntityPaginatorInterface
             ];
         }
 
-        $nextPageUrl = !$this->hasNextPage() ? null : $this->adminUrlGenerator->set(EA::PAGE, $this->getNextPage())->removeReferrer()->generateUrl();
-        $jsonResult['next_page'] = $nextPageUrl;
+        $nextPageUrl = !$this->hasNextPage() ? null : $this->adminUrlGenerator->set(EA::PAGE, $this->getNextPage());
+        $currentRequest = $this->requestStack->getCurrentRequest();
+        $usesPrettyUrls = null !== $crudControllerFqcn = $currentRequest->attributes->get(EA::CRUD_CONTROLLER_FQCN);
+        if ($usesPrettyUrls && null !== $nextPageUrl) {
+            $nextPageUrl->setController($crudControllerFqcn)->setAction($currentRequest->attributes->get(EA::CRUD_ACTION));
+        }
+
+        $jsonResult['next_page'] = $nextPageUrl?->generateUrl();
 
         return json_encode($jsonResult, \JSON_THROW_ON_ERROR);
     }

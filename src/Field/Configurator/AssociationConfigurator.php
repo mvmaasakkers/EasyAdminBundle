@@ -18,10 +18,11 @@ use EasyCorp\Bundle\EasyAdminBundle\Factory\EntityFactory;
 use EasyCorp\Bundle\EasyAdminBundle\Field\AssociationField;
 use EasyCorp\Bundle\EasyAdminBundle\Form\Type\CrudAutocompleteType;
 use EasyCorp\Bundle\EasyAdminBundle\Form\Type\CrudFormType;
-use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGenerator;
+use EasyCorp\Bundle\EasyAdminBundle\Router\AdminUrlGeneratorInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\PropertyAccess\Exception\UnexpectedTypeException;
 use Symfony\Component\PropertyAccess\PropertyAccessor;
+use Symfony\Component\Routing\Exception\RouteNotFoundException;
 use function Symfony\Component\Translation\t;
 
 /**
@@ -30,11 +31,11 @@ use function Symfony\Component\Translation\t;
 final class AssociationConfigurator implements FieldConfiguratorInterface
 {
     private EntityFactory $entityFactory;
-    private AdminUrlGenerator $adminUrlGenerator;
+    private AdminUrlGeneratorInterface $adminUrlGenerator;
     private RequestStack $requestStack;
     private ControllerFactory $controllerFactory;
 
-    public function __construct(EntityFactory $entityFactory, AdminUrlGenerator $adminUrlGenerator, RequestStack $requestStack, ControllerFactory $controllerFactory)
+    public function __construct(EntityFactory $entityFactory, AdminUrlGeneratorInterface $adminUrlGenerator, RequestStack $requestStack, ControllerFactory $controllerFactory)
     {
         $this->entityFactory = $entityFactory;
         $this->adminUrlGenerator = $adminUrlGenerator;
@@ -92,6 +93,8 @@ final class AssociationConfigurator implements FieldConfiguratorInterface
             $field->setFormTypeOption('attr.data-ea-widget', 'ea-autocomplete');
         }
 
+        $field->setFormTypeOption('attr.data-ea-autocomplete-render-items-as-html', true === $field->getCustomOption(AssociationField::OPTION_ESCAPE_HTML_CONTENTS) ? 'false' : 'true');
+
         // check for embedded associations
         $propertyNameParts = explode('.', $propertyName);
         if (\count($propertyNameParts) > 1) {
@@ -118,13 +121,17 @@ final class AssociationConfigurator implements FieldConfiguratorInterface
             $field->setFormTypeOptionIfNotSet('class', $targetEntityFqcn);
 
             try {
-                $relatedEntityId = $accessor->getValue($entityDto->getInstance(), $propertyName.'.'.$metadata->getIdentifierFieldNames()[0]);
-                $relatedEntityDto = $this->entityFactory->create($targetEntityFqcn, $relatedEntityId);
+                if (null !== $entityDto->getInstance()) {
+                    $relatedEntityId = $accessor->getValue($entityDto->getInstance(), $propertyName.'.'.$metadata->getIdentifierFieldNames()[0]);
+                    $relatedEntityDto = $this->entityFactory->create($targetEntityFqcn, $relatedEntityId);
 
-                $field->setCustomOption(AssociationField::OPTION_RELATED_URL, $this->generateLinkToAssociatedEntity($targetCrudControllerFqcn, $relatedEntityDto));
-                $field->setFormattedValue($this->formatAsString($relatedEntityDto->getInstance(), $relatedEntityDto));
-            } catch (UnexpectedTypeException) {
-                // this may crash if something in the tree is null, so just do nothing then
+                    $field->setCustomOption(AssociationField::OPTION_RELATED_URL, $this->generateLinkToAssociatedEntity($targetCrudControllerFqcn, $relatedEntityDto));
+                    $field->setFormattedValue($this->formatAsString($relatedEntityDto->getInstance(), $relatedEntityDto));
+                }
+            } catch (UnexpectedTypeException|RouteNotFoundException) {
+                // this may throw an exception if:
+                //   * something in the tree is null; do nothing in that case;
+                //   * the route is not found, which happens when the associated entity is not accessible from this dashboard; do nothing in that case either.
             }
         } else {
             if ($entityDto->isToOneAssociation($propertyName)) {
@@ -143,25 +150,32 @@ final class AssociationConfigurator implements FieldConfiguratorInterface
             }
 
             $field->setFormType(CrudAutocompleteType::class);
-            $autocompleteEndpointUrl = $this->adminUrlGenerator
-                ->unsetAll()
-                ->set('page', 1) // The autocomplete should always start on the first page
-                ->setController($field->getCustomOption(AssociationField::OPTION_EMBEDDED_CRUD_FORM_CONTROLLER))
-                ->setAction('autocomplete')
-                ->set(AssociationField::PARAM_AUTOCOMPLETE_CONTEXT, [
-                    EA::CRUD_CONTROLLER_FQCN => $context->getRequest()->query->get(EA::CRUD_CONTROLLER_FQCN),
-                    'propertyName' => $propertyName,
-                    'originatingPage' => $context->getCrud()->getCurrentPage(),
-                ])
-                ->generateUrl();
 
-            $field->setFormTypeOption('attr.data-ea-autocomplete-endpoint-url', $autocompleteEndpointUrl);
+            try {
+                $autocompleteEndpointUrl = $this->adminUrlGenerator
+                    ->unsetAll()
+                    ->set('page', 1) // The autocomplete should always start on the first page
+                    ->setController($targetCrudControllerFqcn)
+                    ->setAction('autocomplete')
+                    ->set(AssociationField::PARAM_AUTOCOMPLETE_CONTEXT, [
+                        // when using pretty URLs, the data is in the request attributes instead of the autocomplete context
+                        EA::CRUD_CONTROLLER_FQCN => $context->getRequest()->attributes->get(EA::CRUD_CONTROLLER_FQCN) ?? $context->getRequest()->query->get(EA::CRUD_CONTROLLER_FQCN),
+                        'propertyName' => $propertyName,
+                        'originatingPage' => $context->getCrud()->getCurrentPage(),
+                    ])
+                    ->generateUrl();
+            } catch (RouteNotFoundException $e) {
+                // this may throw a "route not found" exception if the associated entity is not
+                // accessible from this dashboard; do nothing in that case.
+            }
+
+            $field->setFormTypeOption('attr.data-ea-autocomplete-endpoint-url', $autocompleteEndpointUrl ?? null);
         } else {
             $field->setFormTypeOptionIfNotSet('query_builder', static function (EntityRepository $repository) use ($field) {
                 // TODO: should this use `createIndexQueryBuilder` instead, so we get the default ordering etc.?
                 // it would then be identical to the one used in autocomplete action, but it is a bit complex getting it in here
                 $queryBuilder = $repository->createQueryBuilder('entity');
-                if ($queryBuilderCallable = $field->getCustomOption(AssociationField::OPTION_QUERY_BUILDER_CALLABLE)) {
+                if (null !== $queryBuilderCallable = $field->getCustomOption(AssociationField::OPTION_QUERY_BUILDER_CALLABLE)) {
                     $queryBuilderCallable($queryBuilder);
                 }
 
@@ -186,7 +200,12 @@ final class AssociationConfigurator implements FieldConfiguratorInterface
             : $this->entityFactory->createForEntityInstance($field->getValue());
         $field->setFormTypeOptionIfNotSet('class', $targetEntityDto->getFqcn());
 
-        $field->setCustomOption(AssociationField::OPTION_RELATED_URL, $this->generateLinkToAssociatedEntity($targetCrudControllerFqcn, $targetEntityDto));
+        try {
+            $field->setCustomOption(AssociationField::OPTION_RELATED_URL, $this->generateLinkToAssociatedEntity($targetCrudControllerFqcn, $targetEntityDto));
+        } catch (RouteNotFoundException $e) {
+            // this may throw a "route not found" exception if the associated entity is not
+            // accessible from this dashboard; do nothing in that case.
+        }
 
         $field->setFormattedValue($this->formatAsString($field->getValue(), $targetEntityDto));
     }
@@ -194,9 +213,6 @@ final class AssociationConfigurator implements FieldConfiguratorInterface
     private function configureToManyAssociation(FieldDto $field): void
     {
         $field->setCustomOption(AssociationField::OPTION_DOCTRINE_ASSOCIATION_TYPE, 'toMany');
-
-        // associations different from *-to-one cannot be sorted
-        $field->setSortable(false);
 
         $field->setFormTypeOptionIfNotSet('multiple', true);
 
@@ -233,14 +249,20 @@ final class AssociationConfigurator implements FieldConfiguratorInterface
             return null;
         }
 
+        $primaryKeyValue = $entityDto->getPrimaryKeyValue();
+        // when processing fields for an entity in the index page, the primary key of the
+        // associated entity is null (e.g. admin_post_index and Post <-> User)
+        $crudAction = null === $primaryKeyValue ? Action::INDEX : Action::DETAIL;
+
         // TODO: check if user has permission to see the related entity
         return $this->adminUrlGenerator
             ->setController($crudController)
-            ->setAction(Action::DETAIL)
-            ->setEntityId($entityDto->getPrimaryKeyValue())
-            ->unset(EA::MENU_INDEX)
-            ->unset(EA::SUBMENU_INDEX)
-            ->includeReferrer()
+            ->setAction($crudAction)
+            ->setEntityId($primaryKeyValue)
+            ->unset(EA::FILTERS)
+            ->unset(EA::PAGE)
+            ->unset(EA::QUERY)
+            ->unset(EA::SORT)
             ->generateUrl();
     }
 
@@ -264,11 +286,15 @@ final class AssociationConfigurator implements FieldConfiguratorInterface
     private function configureCrudForm(FieldDto $field, EntityDto $entityDto, string $propertyName, string $targetEntityFqcn, string $targetCrudControllerFqcn): void
     {
         $field->setFormType(CrudFormType::class);
-
         $propertyAccessor = new PropertyAccessor();
-        $associatedEntity = $propertyAccessor->isReadable($entityDto->getInstance(), $propertyName)
-            ? $propertyAccessor->getValue($entityDto->getInstance(), $propertyName)
-            : null;
+
+        if (null === $entityDto->getInstance()) {
+            $associatedEntity = null;
+        } else {
+            $associatedEntity = $propertyAccessor->isReadable($entityDto->getInstance(), $propertyName)
+                ? $propertyAccessor->getValue($entityDto->getInstance(), $propertyName)
+                : null;
+        }
 
         if (null === $associatedEntity) {
             $targetCrudControllerAction = Action::NEW;

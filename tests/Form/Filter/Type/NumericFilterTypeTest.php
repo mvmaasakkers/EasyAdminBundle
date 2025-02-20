@@ -26,7 +26,7 @@ class NumericFilterTypeTest extends FilterTypeTest
 
             $filter = $this->filterRegistry->resolveType($form);
             $filter->filter($this->qb, $form, ['field' => 'foo']);
-            $this->assertSame(static::FILTER_TYPE, \get_class($filter));
+            $this->assertSame(static::FILTER_TYPE, $filter::class);
             $this->assertSame($dql, $this->qb->getDQL());
             $this->assertSameDoctrineParams($params, $this->qb->getParameters()->toArray());
         } else {
@@ -34,7 +34,7 @@ class NumericFilterTypeTest extends FilterTypeTest
         }
     }
 
-    public function getDataProvider(): iterable
+    public static function getDataProvider(): iterable
     {
         yield [
             ['comparison' => ComparisonType::EQ, 'value' => '23', 'value2' => null],

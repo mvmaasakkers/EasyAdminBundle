@@ -23,7 +23,7 @@ Restrict Access to the Entire Backend
 
 Using the `access_control option`_, you can tell Symfony to require certain
 permissions to browse the URL associated to the backend. This is simple to do
-because :ref:`each dashboard only uses a single URL <dashboard-route>`:
+because :ref:`dashboard routes share a common prefix <dashboard-route>`:
 
 .. code-block:: yaml
 
@@ -32,24 +32,70 @@ because :ref:`each dashboard only uses a single URL <dashboard-route>`:
         # ...
 
         access_control:
-            # change '/admin' by the URL used by your Dashboard
+            # change '/admin' by the prefix used by your Dashboard URLs
             - { path: ^/admin, roles: ROLE_ADMIN }
             # ...
 
-Another option is to `add security annotations`_ to the dashboard controller::
+Alternatively you can use the `#[IsGranted] attribute`_. However, this can be
+cumbersome because you must apply it to all dashboard controllers and to all the
+:doc:`CRUD controllers </crud>`::
 
     // app/Controller/Admin/DashboardController.php
+    use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
     use EasyCorp\Bundle\EasyAdminBundle\Config\Dashboard;
     use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
-    use Sensio\Bundle\FrameworkExtraBundle\Configuration\IsGranted;
+    use Symfony\Component\Security\Http\Attribute\IsGranted;
 
-    /**
-     * @IsGranted("ROLE_ADMIN")
-     */
+    #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
+    #[IsGranted('ROLE_ADMIN')]
     class DashboardController extends AbstractDashboardController
     {
         // ...
     }
+
+    // don't forget to also apply #[IsGranted('ROLE_ADMIN')] to all CRUD controllers
+
+.. _security-controllers:
+
+Restrict Access to Some CRUD Controllers
+----------------------------------------
+
+When using more than one :doc:`Dashboard </dashboards>` you might need to restrict
+which :doc:`CRUD controllers </crud>` are accessible for each of them.
+
+Consider that in your application you have two dashboards (``DashboardController``
+used by your employees and ``GuestDashboardController`` used by external collaborators).
+In the guest dashboard you only want to allow certain actions related to your blog.
+
+However, when using :ref:`pretty admin URLs <pretty-admin-urls>`, EasyAdmin will
+generate the routes for all CRUD controllers in all dashboards. This means that
+there will be undesired routes like ``admin_guest_invoice``, ``admin_guest_user_detail``, etc.
+The best way to restrict which CRUD controllers are accessible via each dashboard
+is to use the ``#[AdminDashboard]`` attribute::
+
+    // app/Controller/Admin/DashboardController.php
+    use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminDashboard;
+    use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
+
+    #[AdminDashboard(routePath: '/admin', routeName: 'admin', allowedControllers: [
+        BlogPostCrudController::class,
+        BlogCategoryCrudController::class,
+    ])]
+    class DashboardController extends AbstractDashboardController
+    {
+        // ...
+    }
+
+The ``allowedControllers`` option defines the only CRUD controllers that will be
+available in the dashboard via Symfony routes. In practice, the above configuration
+will make EasyAdmin to only generate the routes ``admin_guest_blog_post_*`` and
+``admin_guest_blog_category_*``, skipping all the other routes that would have
+allowed to access the other controllers.
+
+.. tip::
+
+    You can also define the opposite option (``deniedControllers``) to allow all
+    controllers except the ones included in that list.
 
 .. _security-menu:
 
@@ -178,6 +224,47 @@ permissions to see some items:
 .. image:: images/easyadmin-list-hidden-results.png
    :alt: Index page with some results hidden because user does not have enough permissions
 
+.. _security-expressions:
+
+Restricting Access with Expressions
+-----------------------------------
+
+.. versionadded:: 4.9.0
+
+    The Expressions support was introduced in EasyAdmin 4.9.0.
+
+The `Symfony ExpressionLanguage component`_ allows to define complex configuration
+logic using simple expressions. In EasyAdmin, all ``setPermission()`` methods
+allow to pass not only a string with some security role name (e.g. ``ROLE_ADMIN``)
+but also a full ``Expression`` object.
+
+First, install the component in your project using Composer:
+
+.. code-block:: terminal
+
+    $ composer require symfony/expression-language
+
+Now, you can pass a Symfony Expression object to any ``setPermission()`` method
+like this:
+
+.. code-block:: php
+
+    use Symfony\Component\ExpressionLanguage\Expression;
+
+    MenuItem::linkToCrud('Restricted menu-item', null, Example::class)
+        ->setPermission(new Expression('"ROLE_DEVELOPER" in role_names and "ROLE_EXTERNAL" not in role_names'));
+
+Expressions enable the definition of much more detailed permissions, based on
+several role names, user attributes, or the given subject. The expressions can
+include any of these variables:
+
+* ``user`` - the current user object
+* ``role_names`` - all the roles of current user as an array
+* ``subject`` or ``object`` - the current subject being checked
+* ``token`` - the authentication token
+* ``trust_resolver`` - the authentication trust resolver
+* ``auth_checker`` - an instance of the authorization checker service
+
 Custom Security Voters
 ----------------------
 
@@ -204,7 +291,8 @@ grants access only if there are no voters denying access:
 .. _`Symfony Security`: https://symfony.com/doc/current/security.html
 .. _`Create users`: https://symfony.com/doc/current/security.html#a-create-your-user-class
 .. _`Define a firewall`: https://symfony.com/doc/current/security.html#a-authentication-firewalls
-.. _`add security annotations`: https://symfony.com/doc/current/bundles/SensioFrameworkExtraBundle/annotations/security.html
+.. _`#[IsGranted] attribute`: https://symfony.com/doc/current/security.html#securing-controllers-and-other-code
 .. _`access_control option`: https://symfony.com/doc/current/security/access_control.html
 .. _`security voter`: https://symfony.com/doc/current/security/voters.html
 .. _`access decision strategy`: https://symfony.com/doc/current/security/voters.html#changing-the-access-decision-strategy
+.. _`Symfony ExpressionLanguage component`: https://symfony.com/doc/current/components/expression_language.html

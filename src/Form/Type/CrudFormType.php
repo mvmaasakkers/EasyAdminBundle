@@ -2,10 +2,17 @@
 
 namespace EasyCorp\Bundle\EasyAdminBundle\Form\Type;
 
-use ArrayObject;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
+use EasyCorp\Bundle\EasyAdminBundle\Dto\FieldDto;
 use EasyCorp\Bundle\EasyAdminBundle\Field\FormField;
-use EasyCorp\Bundle\EasyAdminBundle\Form\EventListener\EasyAdminTabSubscriber;
+use EasyCorp\Bundle\EasyAdminBundle\Form\EventListener\FormLayoutSubscriber;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Type\Layout\EaFormColumnCloseType;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Type\Layout\EaFormColumnOpenType;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Type\Layout\EaFormFieldsetCloseType;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Type\Layout\EaFormFieldsetOpenType;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Type\Layout\EaFormRowType;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Type\Layout\EaFormTabPaneCloseType;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Type\Layout\EaFormTabPaneOpenType;
 use Symfony\Bridge\Doctrine\Form\DoctrineOrmTypeGuesser;
 use Symfony\Component\Form\AbstractType;
 use Symfony\Component\Form\FormBuilderInterface;
@@ -29,15 +36,16 @@ class CrudFormType extends AbstractType
         $this->doctrineOrmTypeGuesser = $doctrineOrmTypeGuesser;
     }
 
-    public function buildForm(FormBuilderInterface $builder, array $options)
+    public function buildForm(FormBuilderInterface $builder, array $options): void
     {
         /** @var EntityDto $entityDto */
         $entityDto = $options['entityDto'];
         $formTabs = [];
         $currentFormTab = null;
-        $formPanels = [];
-        $currentFormPanel = 0;
+        $formFieldsets = [];
+        $currentFormFieldset = 0;
 
+        /** @var FieldDto $fieldDto */
         foreach ($entityDto->getFields() as $fieldDto) {
             $formFieldOptions = $fieldDto->getFormTypeOptions();
 
@@ -46,7 +54,7 @@ class CrudFormType extends AbstractType
             // 'property_path' option to keep the original field name
             if (str_contains($fieldDto->getProperty(), '.')) {
                 $formFieldOptions['property_path'] = $fieldDto->getProperty();
-                $name = str_replace(['.', '[', ']'], '_', $fieldDto->getProperty());
+                $name = str_replace(['.', '[', ']', '?'], '_', $fieldDto->getProperty());
             } else {
                 $name = $fieldDto->getProperty();
             }
@@ -57,9 +65,9 @@ class CrudFormType extends AbstractType
                 $formFieldOptions = array_merge($guessType->getOptions(), $formFieldOptions);
             }
 
-            if (EaFormPanelType::class === $formFieldType) {
-                ++$currentFormPanel;
-                $formPanels[$currentFormPanel] = [
+            if (EaFormPanelType::class === $formFieldType || EaFormFieldsetType::class === $formFieldType) {
+                ++$currentFormFieldset;
+                $formFieldsets[$currentFormFieldset] = [
                     'form_tab' => $currentFormTab ?? null,
                     'label' => $fieldDto->getLabel(),
                     'icon' => $fieldDto->getCustomOptions()->get(FormField::OPTION_ICON),
@@ -77,7 +85,8 @@ class CrudFormType extends AbstractType
             // applied to the form fields defined after it) and store its details
             // in a field to get them in form template
             if (\in_array($formFieldType, ['ea_tab', EasyAdminTabType::class], true)) {
-                ++$currentFormPanel;
+                ++$currentFormFieldset;
+                $metadata = [];
                 // The first tab should be marked as active by default
                 $metadata['active'] = 0 === \count($formTabs);
                 $metadata['errors'] = 0;
@@ -97,13 +106,15 @@ class CrudFormType extends AbstractType
             // Pass the current panel and tab down to nested CRUD forms, the nested
             // CRUD form fields are forced to use their parents panel and tab
             if (self::class === $formFieldType) {
-                $formFieldOptions['ea_form_panel'] = $currentFormPanel;
+                $formFieldOptions['ea_form_fieldset'] = $currentFormFieldset;
                 $formFieldOptions['ea_form_tab'] = $currentFormTab;
             }
 
+            $name = $this->isTypeFormField($formFieldType) ? $fieldDto->getPropertyNameWithSuffix() : $name;
+
             $formField = $builder->getFormFactory()->createNamedBuilder($name, $formFieldType, null, $formFieldOptions);
             $formField->setAttribute('ea_entity', $entityDto);
-            $formField->setAttribute('ea_form_panel', $options['ea_form_panel'] ?? $currentFormPanel);
+            $formField->setAttribute('ea_form_fieldset', $options['ea_form_fieldset'] ?? $currentFormFieldset);
             $formField->setAttribute('ea_form_tab', $options['ea_form_tab'] ?? $currentFormTab);
             $formField->setAttribute('ea_field', $fieldDto);
 
@@ -111,36 +122,54 @@ class CrudFormType extends AbstractType
         }
 
         $builder->setAttribute('ea_form_tabs', $formTabs);
-        $builder->setAttribute('ea_form_panels', $formPanels);
+        $builder->setAttribute('ea_form_fieldsets', $formFieldsets);
 
-        if (\count($formTabs) > 0) {
-            $builder->addEventSubscriber(new EasyAdminTabSubscriber());
-        }
+        $builder->addEventSubscriber(new FormLayoutSubscriber());
     }
 
-    public function finishView(FormView $view, FormInterface $form, array $options)
+    public function finishView(FormView $view, FormInterface $form, array $options): void
     {
         $view->vars['ea_crud_form'] = [
             'assets' => '** This variable no longer stores field assets. Instead, use "ea.crud.fieldAssets()" in your Twig template.',
             'entity' => $options['entityDto'],
             'form_tabs' => $form->getConfig()->getAttribute('ea_form_tabs'),
-            'form_panels' => $form->getConfig()->getAttribute('ea_form_panels'),
+            'form_fieldsets' => $form->getConfig()->getAttribute('ea_form_fieldsets'),
         ];
     }
 
-    public function configureOptions(OptionsResolver $resolver)
+    public function configureOptions(OptionsResolver $resolver): void
     {
         $resolver
             ->setDefaults([
                 'allow_extra_fields' => true,
                 'data_class' => static fn (Options $options, $dataClass) => $dataClass ?? $options['entityDto']->getFqcn(),
             ])
-            ->setDefined(['entityDto', 'ea_form_panel', 'ea_form_tab'])
+            ->setDefined(['entityDto', 'ea_form_fieldset', 'ea_form_tab', 'ea_form_columns'])
             ->setRequired(['entityDto']);
     }
 
     public function getBlockPrefix(): string
     {
         return 'ea_crud';
+    }
+
+    private function isTypeFormField(?string $type): bool
+    {
+        if (null === $type) {
+            return false;
+        }
+
+        return \in_array($type, [
+            EaFormFieldsetOpenType::class,
+            EaFormFieldsetCloseType::class,
+
+            EaFormRowType::class,
+
+            EaFormTabPaneOpenType::class,
+            EaFormTabPaneCloseType::class,
+
+            EaFormColumnOpenType::class,
+            EaFormColumnCloseType::class,
+        ], true);
     }
 }

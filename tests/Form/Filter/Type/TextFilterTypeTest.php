@@ -23,12 +23,12 @@ class TextFilterTypeTest extends FilterTypeTest
 
         $filter = $this->filterRegistry->resolveType($form);
         $filter->filter($this->qb, $form, ['field' => 'foo']);
-        $this->assertSame(ComparisonFilterType::class, \get_class($filter));
+        $this->assertSame(ComparisonFilterType::class, $filter::class);
         $this->assertSame($dql, $this->qb->getDQL());
         $this->assertSameDoctrineParams($params, $this->qb->getParameters()->toArray());
     }
 
-    public function getDataProvider(): iterable
+    public static function getDataProvider(): iterable
     {
         yield [
             ['comparison' => ComparisonType::CONTAINS, 'value' => 'abc'],

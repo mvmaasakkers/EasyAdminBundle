@@ -3,6 +3,7 @@
 namespace EasyCorp\Bundle\EasyAdminBundle\Dto;
 
 use EasyCorp\Bundle\EasyAdminBundle\Config\Crud;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Option\ColorScheme;
 
 /**
  * @author Javier Eguiluz <javier.eguiluz@gmail.com>
@@ -19,6 +20,7 @@ final class DashboardDto
     private bool $signedUrls = false;
     private bool $absoluteUrls = true;
     private bool $enableDarkMode = true;
+    private string $defaultColorScheme = ColorScheme::AUTO;
     /** @var LocaleDto[] */
     private array $locales = [];
 
@@ -119,11 +121,25 @@ final class DashboardDto
 
     public function getSignedUrls(): bool
     {
+        trigger_deprecation(
+            'easycorp/easyadmin-bundle',
+            '4.1.0',
+            'EasyAdmin URLs no longer include signatures because they don\'t provide any additional security. The "%s" method will be removed in EasyAdmin 5.0.0, so you should stop using it.',
+            __METHOD__
+        );
+
         return $this->signedUrls;
     }
 
     public function setSignedUrls(bool $signedUrls): self
     {
+        trigger_deprecation(
+            'easycorp/easyadmin-bundle',
+            '4.1.0',
+            'EasyAdmin URLs no longer include signatures because they don\'t provide any additional security. The "%s" method will be removed in EasyAdmin 5.0.0, so you should stop using it.',
+            __METHOD__
+        );
+
         $this->signedUrls = $signedUrls;
 
         return $this;
@@ -151,6 +167,18 @@ final class DashboardDto
     public function isDarkModeEnabled(): bool
     {
         return $this->enableDarkMode;
+    }
+
+    public function getDefaultColorScheme(): string
+    {
+        return $this->defaultColorScheme;
+    }
+
+    public function setDefaultColorScheme(string $defaultColorScheme): self
+    {
+        $this->defaultColorScheme = $defaultColorScheme;
+
+        return $this;
     }
 
     public function getLocales(): array
